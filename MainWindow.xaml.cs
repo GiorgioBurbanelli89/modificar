@@ -1,4 +1,4 @@
-﻿using Calcpad.Core;
+using Calcpad.Core;
 using Microsoft.Win32;
 using SHDocVw;
 using System;
@@ -62,13 +62,20 @@ namespace Calcpad.Wpf
             _autoRunTimer.Tick += AutoRunTimer_Tick;
         }
 
-        // Manejador para el evento Tick del timer de auto-ejecución
+        // Modificar AutoRunTimer_Tick para incluir Python
         private void AutoRunTimer_Tick(object sender, EventArgs e)
         {
             _autoRunTimer.Stop();
 
-            if (IsCalculated && !_isUserTyping)
+            // Verificar si estamos en el panel de Python y está activada la auto-ejecución
+            if (PythonPanel.Visibility == Visibility.Visible && _pythonAutoRunEnabled && !_isPythonExecuting)
             {
+                // Ejecutar Python automáticamente
+                ExecutePythonButton_Click(null, null);
+            }
+            else if (IsCalculated && !_isUserTyping)
+            {
+                // Funcionamiento original para Calcpad
                 AutoRun();
             }
         }
@@ -78,6 +85,8 @@ namespace Calcpad.Wpf
         {
             _typingTimer.Stop();
             _isUserTyping = false;
+            // Iniciar el temporizador de autorun, que ejecutará dependiendo
+            // de qué esté activo: Calcpad o Python
             _autoRunTimer.Start();
         }
 
@@ -618,15 +627,19 @@ namespace Calcpad.Wpf
             }
         }
 
+        // Reemplazar la función de checked/unchecked para Python
         private void PythonAutoRunCheckBox_Checked(object sender, RoutedEventArgs e)
         {
             // Activar ejecución automática de Python
             _pythonAutoRunEnabled = true;
 
-            // Si hay código en el TextBox, ejecutarlo automáticamente
+            // Si hay código en el TextBox, ejecutarlo automáticamente después de un breve retardo
             if (PythonCodeTextBox != null && !string.IsNullOrEmpty(PythonCodeTextBox.Text))
             {
-                ExecutePythonButton_Click(sender, e);
+                // Usar el mismo sistema que usa Calcpad
+                _typingTimer.Stop();
+                _isUserTyping = false;
+                _autoRunTimer.Start();
             }
         }
 
@@ -636,34 +649,28 @@ namespace Calcpad.Wpf
             _pythonAutoRunEnabled = false;
         }
 
+        // Reemplaza el método PythonCodeTextBox_TextChanged existente con este:
         private void PythonCodeTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            // Si está habilitada la ejecución automática, ejecutar el código al cambiar
-            if (_pythonAutoRunEnabled && PythonCodeTextBox != null && !string.IsNullOrEmpty(PythonCodeTextBox.Text))
+            // Detener cualquier ejecución pendiente
+            if (_pythonCancellationTokenSource != null)
             {
-                // Usar un temporizador para no ejecutar con cada pulsación de tecla
-                // sino esperar a que el usuario deje de escribir
-                if (_pythonCancellationTokenSource != null)
-                {
-                    _pythonCancellationTokenSource.Cancel();
-                    _pythonCancellationTokenSource = null;
-                }
+                _pythonCancellationTokenSource.Cancel();
+                _pythonCancellationTokenSource = null;
+            }
 
-                _pythonCancellationTokenSource = new CancellationTokenSource();
-                var token = _pythonCancellationTokenSource.Token;
+            // Actualizar estado
+            PythonStatusTextBlock.Text = "Python: Escribiendo...";
+            PythonStatusIndicator.Fill = Brushes.Yellow;
 
-                Task.Delay(1000, token).ContinueWith(t => {
-                    if (!t.IsCanceled)
-                    {
-                        // Ejecutar en el hilo de UI
-                        Dispatcher.Invoke(() => {
-                            if (_pythonAutoRunEnabled)
-                            {
-                                ExecutePythonButton_Click(sender, null);
-                            }
-                        });
-                    }
-                }, token);
+            // Si está habilitada la ejecución automática, preparar el temporizador
+            if (_pythonAutoRunEnabled)
+            {
+                // Usar el mismo sistema de temporizadores que Calcpad
+                _typingTimer.Stop();
+                _typingTimer.Start();
+                _isUserTyping = true;
+                _autoRunTimer.Stop();
             }
         }
 
